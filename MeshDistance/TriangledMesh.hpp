@@ -32,14 +32,14 @@ class TriangledMesh
         void processNode(aiNode* node, const aiScene* scene);
         void processMesh(aiMesh* mesh, const aiScene* scene);
         float getDistance(TriangledMesh const& other, aiVector3D const& direction);
-        std::vector<Triangle> getTriangles() { return triangles_; }
-        aiAABB getAABB() { return aiMesh_->mAABB; }
+        std::vector<Triangle> getTriangles() const;
+        aiAABB getAABB() const { return aabb_; }
+        std::vector<aiVector3D> getVertices() const { return vertices_; }
 
     private:
         std::vector<aiVector3D> vertices_;
         std::vector<aiFace> faces_;
-        std::vector<Triangle> triangles_;
-        aiMesh* aiMesh_;
+        aiAABB aabb_;
 };
 
 
