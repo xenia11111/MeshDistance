@@ -1,0 +1,1074 @@
+import Geometry;
+#include "OctTree.h"
+#include <cmath>
+#include <ranges>
+#include <algorithm>
+#include <queue>
+#include <execution>
+#include <fstream>
+#include <sstream>
+
+//std::ofstream logs("logs.txt");
+//std::ofstream build_logs("build_logs.txt");
+std::ofstream distance_logs("distance_logs.txt");
+
+
+/*void OctTree::Build(OctNode*& node, std::vector<uint32_t> const& indices, aiAABB const& aabb, int depth) const
+{
+	
+	node->aabb_ = aabb;
+	if (depth >= maxDepth || indices.size() <= minNumberOfPoints
+						  || aabb.mMax.x - aabb.mMin.x < minBoxSize_
+		                  || aabb.mMax.y - aabb.mMin.y < minBoxSize_
+						  || aabb.mMax.z - aabb.mMin.z < minBoxSize_)
+	{
+		node->indices_ = indices;
+		return;
+	}
+	
+
+	aiVector3D BboxMin = aabb.mMin;
+	aiVector3D BboxMax = aabb.mMax;
+
+	aiVector3D center = BboxMin + (BboxMax - BboxMin) / 2.0f;
+
+
+	std::array<aiAABB, 8> octants 
+	{
+		aiAABB{ BboxMin, center },
+		{ { center.x, BboxMin.y, BboxMin.z }, { BboxMax.x, center.y, center.z } },
+		{ { center.x, BboxMin.y, center.z }, { BboxMax.x, center.y, BboxMax.z } },
+		{ { BboxMin.x, BboxMin.y, center.z }, { center.x, center.y, BboxMax.z } },
+		{ { BboxMin.x, center.y, BboxMin.z }, { center.x, BboxMax.y, center.z } },
+		{ { center.x, center.y, BboxMin.z }, { BboxMax.x, BboxMax.y, center.z } },
+		{ center, BboxMax },
+		{ { BboxMin.x, center.y, center.z }, { center.x, BboxMax.y, BboxMax.z } }
+	};
+
+	std::array<std::vector<uint32_t>, 8> childNodeIndices;
+
+    for (auto index: indices)
+	{
+		auto vertex = mesh_->getVertices()[index];
+		
+		for (int i = 0; i < 8; i++)
+		{
+			if (geometry::isPointInsideBox(vertex, octants[i]))
+			{
+				childNodeIndices[i].push_back(index);
+			}
+		}
+	}
+
+	for (int i = 0; i < 8; i++) {
+
+		if (childNodeIndices[i].size() > 0)
+		{
+			OctNode* child = new OctNode();
+			Build(child, childNodeIndices[i], octants[i], depth + 1);
+			node->children_.push_back(child);
+		}
+		
+	}
+	if (node->children_.size() > 0)
+		node->isLeaf = false;
+}*/
+
+
+
+
+/*float OctTree::getDistanceFromMesh(aiVector3D const& direction, TriangledMesh const& otherMesh) const
+{
+	float distance = std::numeric_limits<float>::max();
+	size_t vertexCount = 0;
+	for (auto const& vertex : otherMesh.getVertices())
+	{
+		++vertexCount;
+		if(vertexCount%1000 == 0)
+			std::cout << "Vertex " << vertexCount << "\n";
+
+		distance = std::min(distance, getDistanceFromPoint(root, direction, vertex));
+	}
+	return distance;
+
+	auto const& vertices = otherMesh.getVertices();
+	std::vector<float> distances;
+	distances.resize(vertices.size());
+	auto getDist = [&direction, this](auto const& vertex) { return getDistanceFromPoint(root, vertex, direction); };
+	std::transform(std::execution::seq, vertices.cbegin(), vertices.cend(), distances.begin(), getDist);
+	return *std::min_element(std::execution::par_unseq, distances.begin(), distances.end());
+} */
+
+
+
+
+/*float OctTree::getDistanceFromPoint(OctNode* node, aiVector3D const& dir, aiVector3D const& origin) const
+{
+	float distance = std::numeric_limits<float>::max();
+
+	if (geometry::rayIntersectBox(origin, dir, node->aabb_) != std::numeric_limits<float>::max() ) {
+		if (node->isLeaf)
+		{
+			for (auto index : node->indices_)
+			{
+				auto triangle = mesh_->getTriangle(index);
+				distance = std::min(distance, geometry::getDistance(origin, triangle, dir));
+				if (distance < 18)
+					logs << "Origin: " << origin << " triangle: " << triangle << " distance: " << distance << " nodeABBB: " << node->aabb_ << " doesRayIntersect: " << geometry::rayIntersectBox(origin, dir, node->aabb_) << "\n";
+			}
+		}
+
+		else {
+
+			for (auto& child : node->children_)
+			{
+
+				distance = std::min(distance, getDistanceFromPoint(child, dir, origin));
+			}
+		}
+	}
+		
+		
+
+	return distance;
+}*/
+
+
+inline float getDist(std::vector<Triangle> const& triangles1, std::vector<Triangle> const& triangles2, aiVector3D const& direction)
+{
+	float minDist = std::numeric_limits<float>::max();
+	
+	Triangle t1;
+	Triangle t2;
+	for (auto const& triangle1 : triangles1) 
+	{
+		for (auto const& triangle2 : triangles2)
+		{
+			//auto dist = geometry::getTriangleToTriangleDist(triangle1, triangle2, direction);
+			//std::cerr << "Distance from triangle : "<< triangle1 << "to triangle: "<< triangle2 << "is: " << dist << ".\n";
+			//logs << "Distance from triangle : " << triangle1 << "to triangle: " << triangle2 << "is: " << dist << ".\n";
+			auto d1 = geometry::getDistance(triangle1.v0, triangle2, direction);
+			auto d2 = geometry::getDistance(triangle1.v1, triangle2, direction);
+			auto d3 = geometry::getDistance(triangle1.v2, triangle2, direction);
+			auto dist = std::min({ d1 ,d2, d3 });
+			if (minDist > dist)
+			{
+				minDist = dist;
+				t1 = triangle1;
+				t2 = triangle2;
+			}
+		}
+	}
+	std::cerr << " Min Distance from triangle : " << t1 << "to triangle: " << t2 << "is: " << minDist << ".\n";
+	//logs << "Min Distance from triangle : " << t1 << "to triangle: " << t2 << "is: " << minDist << ".\n";
+	return minDist;
+}
+
+
+/*float OctTree::getDistance(OctTree const& other, aiVector3D const& direction)
+{
+	return getDistance(root, other.root, direction);
+}
+
+/float OctTree::getDistance(OctNode* fromRoot, OctNode* toRoot, aiVector3D const& direction)
+{
+	operations_2++;
+	constexpr float maxFloat = std::numeric_limits<float>::max();
+	auto rootOctantsDistance = geometry::getBoxToBoxDistance(fromRoot->aabb_, toRoot->aabb_, direction);
+	if (rootOctantsDistance == maxFloat)
+		return maxFloat;
+
+	std::priority_queue<BoxToBoxDistanceQueueElement> queue;
+	queue.push(BoxToBoxDistanceQueueElement{ fromRoot, toRoot, rootOctantsDistance });
+	
+	float minDistance = maxFloat;
+	while (!queue.empty())
+	{
+		auto [from, to, boxDistance] = queue.top();
+		queue.pop();
+
+
+		minDistance = std::min(minDistance, getDist(from->triangles_, to->triangles_, direction));
+		
+
+
+
+
+		for (auto fromChild : from->isLeaf ? std::vector<OctNode*>{ from } : from->children_)
+		{
+			for (auto toChild : to->isLeaf ? std::vector<OctNode*>{ to } : to->children_)
+			{
+				auto dist = geometry::getBoxToBoxDistance(fromChild->aabb_, toChild->aabb_, direction);
+				if (dist != maxFloat)
+					queue.push(BoxToBoxDistanceQueueElement(fromChild, toChild, dist));
+			}
+		}
+
+
+
+		while (!queue.empty() && queue.top().distance == boxDistance)
+		{
+			fromChild = queue.top().from;
+			toChild = queue.top().to;
+			minDistance = std::min(minDistance, getDistance(fromChild, toChild, direction));
+			//std::cerr << "Min Distance from box with box distance: " << queue.top().distance << "is: " << minDist << ".\n";
+			//logs << "Min Distance from box with box distance: " << queue.top().distance << "is: " << minDist << ".\n";
+			queue.pop();
+		}
+		if (minDistance != maxFloat)
+			return minDistance;
+	}
+	return minDistance;
+}*/
+
+/*float OctTree::intersect(aiVector3D const& orig, aiVector3D const& dir) const
+{
+	if (!geometry::rayIntersectBox(orig, dir, root->aabb_).first)
+		return std::numeric_limits<float>::max();
+	float minDistance = std::numeric_limits<float>::max();
+	std::priority_queue<QueueElement> queue;
+	float distance = geometry::rayIntersectBox(orig, dir, root->aabb_).second;
+
+
+	queue.push(QueueElement(root, distance));
+	 while (!queue.empty()) 
+	 {
+			const OctNode* node = queue.top().node;
+			queue.pop();
+
+			if (node->isLeaf)
+			{
+				minDistance = std::min(minDistance, geometry::getDistance(orig, node->triangles_, dir));
+				//std::cerr << "Distance from leaf node Second OctTree: " << node->aabb_ << "Point: "<< orig << " is " << minDistance << ".\n";
+				//logs << "Distance from leaf node Second OctTree: " << node->aabb_ << "Point: " << orig <<  " is " << minDistance << ".\n";
+				
+			}
+	      for (auto& child : node->children_) {
+				bool isIntersect = geometry::rayIntersectBox(orig, dir, child->aabb_).first;
+				float distance = geometry::rayIntersectBox(orig, dir, child->aabb_).second;
+				if (isIntersect) {
+					queue.push(QueueElement(child, distance));
+				}
+			}
+	 }
+	 return minDistance;
+}
+
+float OctTree::getDistance(OctNode* from, OctNode* to, aiVector3D const& rayDir)
+{
+	auto minDist = std::numeric_limits<float>::max();
+
+	if (from->isLeaf && to->isLeaf)
+	{
+		return getDist(from->triangles_, to->triangles_, rayDir);
+	}
+
+	if (!to->isLeaf && !from->isLeaf)
+	{
+		auto queueFrom = sortChildren(from, rayDir);
+		auto queueTo = sortChildren(to, -rayDir);
+		while (!queueFrom.empty() && !queueTo.empty())
+		{
+			from = queueFrom.top().node;
+			to = queueTo.top().node;
+
+			queueFrom.pop();
+			queueTo.pop();
+			if (from != NULL && to != NULL)
+			{
+				auto dist = getDistance(from, to, rayDir);
+				minDist = std::min(minDist, dist);
+			}
+		}
+		return minDist;
+	}
+
+	if (from->isLeaf && !to->isLeaf)
+	{
+		auto queueTo = sortChildren(to, -rayDir);
+		while (!queueTo.empty())
+		{
+			to = queueTo.top().node;
+			queueTo.pop();
+
+			if (from != NULL && to != NULL)
+			{
+				auto dist = getDistance(from, to, rayDir);
+				minDist = std::min(minDist, dist);
+			}
+		}
+		return minDist;
+	}
+
+	if (to->isLeaf && !from->isLeaf)
+	{
+		auto queueFrom = sortChildren(from, rayDir);
+		while (!queueFrom.empty())
+		{
+			from = queueFrom.top().node;
+			queueFrom.pop();
+			if (from != NULL && to != NULL)
+			{
+				auto dist = getDistance(from, to, rayDir);
+				minDist = std::min(minDist, dist);
+			}
+		}
+		return minDist;
+		
+	}
+
+	return minDist;
+	
+}
+*/
+std::vector<std::vector<int>> OctTree::sortChildren(OctNode* parent, aiVector3D const& dir) const
+{
+	auto x = dir.x - remainder(dir.x, 0.1);
+	auto y = dir.y - remainder(dir.y, 0.1);
+	auto z = dir.z - remainder(dir.z, 0.1);
+
+	auto direction = aiVector3D(x, y, z);
+	auto children = parent->children_;
+	auto parentAABB = parent->aabb_;
+	auto octants = getOctants(parentAABB);
+	auto center = parentAABB.mMin + (parentAABB.mMax - parentAABB.mMin) / 2.0f;
+	Plane plane = { direction, center };
+
+	//auto boxCount = boxIntersectCount(parent->aabb_, dir);
+	std::priority_queue<QueueElementBox> queue;
+	for (int index = 0; index < 8; index++) {
+
+		if (auto c = std::ranges::find_if(children, [=](OctNode* node) { return node->aabbIndex == index; }); c != children.end())
+		{
+			queue.push(QueueElementBox(index, getAABBToPlaneDistance(octants[index], plane, direction)));
+		}
+
+	}
+
+	auto half = ((parentAABB.mMax - center) / 2.0f).Length();
+	std::vector<std::vector<int>> orderIndices;
+	
+	while (!queue.empty())
+	{
+		auto [index, intersectCount] = queue.top();
+		auto minDistance = intersectCount;
+		std::vector<int> indices;
+		indices.push_back(index);
+		queue.pop();
+		while (!queue.empty() && queue.top().intersectCount_ == minDistance /* && fabs(queue.top().intersectCount_) > fabs(minDistance / 2.0f)*/)
+		{
+			auto [index, intersectCount] = queue.top();
+			indices.push_back(index);
+			queue.pop();
+		}
+		orderIndices.push_back(indices);
+	}
+
+	return orderIndices;
+}
+
+std::array<int, 8> OctTree::boxIntersectCount(aiAABB const& aabb, aiVector3D const& rayDir) const
+{
+	
+	auto octants = geometry::getOctants(aabb);
+
+	std::array<int, 8> intersectCount;
+	auto center = octants[0].mMin + (octants[0].mMax - octants[0].mMin) / 2.0f;
+	auto halfExtents = (octants[0].mMax - center).Length();
+	/*for (int i = 0; i < 8; i++)
+	{
+		float count = 0;
+		//auto vertices = geometry::getAABBVertices(octants[i]);
+		auto fromCenter = octants[i].mMin + (octants[i].mMax - octants[i].mMin) / 2.0f;
+		auto sectionFrom = getAABBSection(octants[i], Plane{ rayDir, fromCenter });
+		for (int j = 0; j < 8; j++)
+		{
+			if (i != j) 
+			{
+				auto toCenter = octants[j].mMin + (octants[j].mMax - octants[j].mMin) / 2.0f;
+				auto sectionTo = getAABBSection(octants[j], Plane{ rayDir, toCenter });
+
+				
+				
+					auto distanceSectionToSection = getPolygonToPolygonDistance(sectionFrom, sectionTo, rayDir);
+					//auto distanceToAABB = getMaxDistanceToAABB(vertex, rayDir, octants[j]);
+					if (distanceSectionToSection > 0 && distanceSectionToSection >= halfExtents && distanceSectionToSection != std::numeric_limits<float>::max())
+					{
+						count++;
+						
+					}
+				
+			}
+		}
+		intersectCount[i] = count;
+	}*/
+	for (int i = 0; i < 8; i++)
+	{
+		auto vertices = geometry::getAABBVertices(octants[i]);
+		float count = 0;
+		for (auto vertex : vertices)
+		{
+			
+			for (int j = 0; j < 8; j++)
+			{
+				if (i != j)
+				{
+					auto distanceToAABB = geometry::getDistanceToAABB(vertex, rayDir, octants[j]);
+					
+					if (distanceToAABB > 0 && distanceToAABB != std::numeric_limits<float>::max())
+					{
+						count++;
+
+						//break;
+					}
+
+				}
+			}
+		}
+		intersectCount[i] = count;
+	}
+	    
+
+
+	return intersectCount;
+}
+
+void OctTree::Build(OctNode*& node, std::vector<Triangle> const& trianglesInside, std::vector<Triangle> const& trianglesIntersect, aiAABB const& aabb, int depth) const
+{
+	
+	node->aabb_ = aabb;
+
+	std::vector<Triangle> triangles;
+	std::copy(trianglesInside.begin(), trianglesInside.end(), std::back_inserter(triangles));
+	std::copy(trianglesIntersect.begin(), trianglesIntersect.end(), std::back_inserter(triangles));
+	
+	/*if (trianglesInside.size() == 0)
+		build_logs << " inside is zero, intersect: " << trianglesIntersect.size() << "\n";
+	else if (depth > 0)
+		build_logs << " ratio tri intersectes to tri inside: " << fabs(trianglesIntersect.size() / trianglesInside.size()) << "   depth:  " << depth << "\n";
+	else
+		build_logs << " get tri count: " << trianglesInside.size() << "\n";*/
+
+
+		
+	
+	if (depth >= maxDepth || triangles.size() <= minNumberOfTriangles
+		|| aabb.mMax.x - aabb.mMin.x < minBoxSize_
+		|| aabb.mMax.y - aabb.mMin.y < minBoxSize_
+		|| aabb.mMax.z - aabb.mMin.z < minBoxSize_
+		)
+	{
+		buildOperations++;
+		leafNodeCount++;
+		leafSumTri += triangles.size();
+		node->triangles_ = triangles;
+		return;
+	}
+	parentNodeCount++;
+	aiVector3D BboxMin = aabb.mMin;
+	aiVector3D BboxMax = aabb.mMax;
+	
+	aiVector3D center = BboxMin + (BboxMax - BboxMin) / 2.0f;
+	
+
+
+	std::array<aiAABB, 8> octants
+	{
+		aiAABB{ BboxMin, center },
+		{ { center.x, BboxMin.y, BboxMin.z }, { BboxMax.x, center.y, center.z } },
+		{ { center.x, BboxMin.y, center.z }, { BboxMax.x, center.y, BboxMax.z } },
+		{ { BboxMin.x, BboxMin.y, center.z }, { center.x, center.y, BboxMax.z } },
+		{ { BboxMin.x, center.y, BboxMin.z }, { center.x, BboxMax.y, center.z } },
+		{ { center.x, center.y, BboxMin.z }, { BboxMax.x, BboxMax.y, center.z } },
+		{ center, BboxMax },
+		{ { BboxMin.x, center.y, center.z }, { center.x, BboxMax.y, BboxMax.z } }
+	};
+
+	std::array<std::vector<Triangle>, 8> childrenTrianglesInside;
+	std::array<std::vector<Triangle>, 8> childrenTrianglesIntersect;
+
+	size_t sumBoxIntersectCount = 0;
+	size_t intersectCount = 0;
+	size_t insideCount = 0;
+
+	for (auto const& tri : triangles)
+	{
+		int tri_intersect_count = 0;
+		buildOperations++;
+		
+
+		bool triangleInOctant = false;
+		aiAABB octant;
+		bool triangleIntersectsOctant = false;
+		size_t boxIntersectCount = 0;
+		
+		for (int i = 0; i < 8; i++)
+		{
+			if (tri.isInsideBox(octants[i]))
+			{
+				if(!triangleInOctant)
+					insideCount++;
+				childrenTrianglesInside[i].push_back(tri);
+				triangleInOctant = true;
+				octant = octants[i];
+			}
+			else if (BoxIntersectsTriangle(octants[i], tri))
+			{
+				boxIntersectCount++;
+				if(!triangleIntersectsOctant)
+					intersectCount++;
+				
+				triangleIntersectsOctant = true;
+				if (triangleInOctant)
+				{
+					trianglesExtra++;
+					/*std::stringstream ss;
+					ss << "Triangle		" << tri << "	 already was inside AABB		" << octant << "	and  intersects AABB		"<< octants[i] << "\n";
+					std::cerr << ss.str();
+					throw std::runtime_error(ss.str());*/
+				}
+				childrenTrianglesIntersect[i].push_back(tri);
+			}
+			
+		}
+
+		sumBoxIntersectCount += boxIntersectCount;
+
+		if (!triangleInOctant && !triangleIntersectsOctant)
+		{
+			trianglesNotDistributed++;
+		}
+	}
+
+	//build_logs << " inside count: " << insideCount << " intersect count: " << intersectCount << " ratio: " << ((insideCount != 0) ? fabs(intersectCount / insideCount) : -1)
+		       //<<  " tri intersect in average: " << sumBoxIntersectCount/intersectCount << " triangles " << " depth:  " << depth << "\n";
+	intersectCountPerDepth[depth] += intersectCount;
+	//size_t average = fabs(sumBoxIntersectCount / intersectCount);
+	insideCountPerDepth[depth] += insideCount;
+	//sumAverageTriIntersect += average;
+
+	size_t childrenInside = 0;
+	for (auto const& childTriangles : childrenTrianglesInside)
+	{
+		childrenInside += childTriangles.size();
+	}
+	size_t childrenIntersect = 0;
+	for (auto const& childTriangles : childrenTrianglesIntersect)
+	{
+		childrenIntersect += childTriangles.size();
+	}
+	auto ratio = (float)(childrenIntersect + childrenInside) / triangles.size();
+
+
+	for (int i = 0; i < 8; i++) 
+	{
+		if (childrenTrianglesInside[i].size() > 0 || childrenTrianglesIntersect[i].size() > 0)
+		{
+			OctNode* child = new OctNode{};
+			child->aabbIndex = i;
+			Build(child, childrenTrianglesInside[i], childrenTrianglesIntersect[i], octants[i], depth + 1);
+			node->children_.push_back(child);
+		}
+	}
+
+	if (node->children_.size() > 0)
+		node->isLeaf = false;
+}
+
+/*void OctTree::getChildrenTriangles(std::vector<Triangle> const& sortedByX,
+	                                                                std::vector<Triangle> const& sortedByY, 
+	                                                                std::vector<Triangle> const& sortedByZ, 
+	                                                                std::array<std::vector<Triangle>, 8>& childNodeTriangles) const
+{
+
+	childNodeTriangles[0] = joinAndRemoveDuplicates(getFirstHalf(sortedByX), getFirstHalf(sortedByY), getSecondHalf(sortedByZ));
+
+	childNodeTriangles[1] = joinAndRemoveDuplicates(getFirstHalf(sortedByX), getSecondHalf(sortedByY), getSecondHalf(sortedByZ));
+
+	childNodeTriangles[2] = joinAndRemoveDuplicates(getSecondHalf(sortedByX), getSecondHalf(sortedByY), getSecondHalf(sortedByZ));
+
+	childNodeTriangles[3] = joinAndRemoveDuplicates(getSecondHalf(sortedByX), getFirstHalf(sortedByY), getSecondHalf(sortedByZ));
+
+	childNodeTriangles[4] = joinAndRemoveDuplicates(getFirstHalf(sortedByX), getFirstHalf(sortedByY), getFirstHalf(sortedByZ));
+
+	childNodeTriangles[5] = joinAndRemoveDuplicates(getFirstHalf(sortedByX), getSecondHalf(sortedByY), getFirstHalf(sortedByZ));
+
+	childNodeTriangles[6] = joinAndRemoveDuplicates(getSecondHalf(sortedByX), getSecondHalf(sortedByY), getFirstHalf(sortedByZ));
+
+	childNodeTriangles[7] = joinAndRemoveDuplicates(getSecondHalf(sortedByX), getFirstHalf(sortedByY), getFirstHalf(sortedByZ));
+
+}
+
+std::vector<Triangle> OctTree::getFirstHalf( std::vector<Triangle> const& v) const
+{
+	auto middle = v.begin() + std::distance(v.begin(), v.end()) / 2;
+	return std::vector<Triangle>(v.begin(), middle);
+}
+
+std::vector<Triangle> OctTree::getSecondHalf(std::vector<Triangle> const& v) const
+{
+	auto middle = v.begin() + std::distance(v.begin(), v.end()) / 2;
+	return std::vector<Triangle>(middle, v.end());
+}
+
+
+std::vector<Triangle> OctTree::joinAndRemoveDuplicates(std::vector<Triangle> const& v1, std::vector<Triangle> const& v2, std::vector<Triangle> const& v3) const
+{
+	std::vector<Triangle> combinedTriangles;
+	combinedTriangles.reserve(v1.size() + v2.size() + v3.size());
+	copy(v1.begin(), v1.end(), back_inserter(combinedTriangles));
+	copy(v2.begin(), v2.end(), back_inserter(combinedTriangles));
+	copy(v3.begin(), v3.end(), back_inserter(combinedTriangles));
+	sort(combinedTriangles.begin(), combinedTriangles.end(), [](const Triangle& t1, const Triangle& t2) {
+		if (t1.v0 != t2.v0) {
+			return t1.v0 < t2.v0;
+		}
+		else if (t1.v1 != t2.v1) {
+			return t1.v1 < t2.v1;
+		}
+		else {
+			return t1.v2 < t2.v2;
+		}
+		});
+	auto last = unique(combinedTriangles.begin(), combinedTriangles.end(), [](const Triangle& t1, const Triangle& t2) {
+		return t1.v0 == t2.v0 && t1.v1 == t2.v1 && t1.v2 == t2.v2;
+		});
+	combinedTriangles.erase(last, combinedTriangles.end());
+	return combinedTriangles;
+}*/
+
+float OctTree::getDistanceFromMesh( TriangledMesh const& otherMesh) const
+{
+	float distance = std::numeric_limits<float>::max();
+	size_t vertexCount = 0;
+	auto fromAABB = otherMesh.getAABB();
+	auto fromCenter = fromAABB.mMin + (fromAABB.mMax - fromAABB.mMin) / 2.0f;
+	auto toCenter = root->aabb_.mMin + (root->aabb_.mMax - root->aabb_.mMin) / 2.0f;
+	auto dir = (toCenter - fromCenter).Normalize();
+	auto n = otherMesh.getVertices().size();
+	for (auto const& vertex : otherMesh.getVertices())
+	{
+		//trianglesOperations = 0;
+		/*++vertexCount;
+		if(vertexCount%10000 == 0)
+			std::cout << "Vertex " << vertexCount << "\n";*/
+		//trianglesOperations = 0;
+		//operations_ = 0;
+		//logs << "origin: " << vertex << "\n";
+		size_t operationPerVertex = 0;
+		distance = std::min(distance, getDistanceFromPoint2(root, dir, vertex, operationPerVertex));
+		sumAverageLogN += operationPerVertex;
+		//logs << "tri operations count: " << trianglesOperations << "\n";
+		//logs << "operations count: " << operations_ << "\n";
+		//logs << "distance: " << distance << "\n";
+	}
+	sumAverageLogN /= n;
+	return distance;
+}
+
+
+
+
+
+
+
+
+float OctTree::getDistanceFromPoint(OctNode* node, aiVector3D const& dir, aiVector3D const& origin) const
+{
+	vertexToOctreeOperations++;
+	constexpr float maxFloat = std::numeric_limits<float>::max();
+	float distance = maxFloat;
+	if (geometry::getDistanceToAABB(origin, dir, node->aabb_) != maxFloat)
+	{
+		//std::cerr << node << " hit\n";
+		if (node->isLeaf) {
+
+			for (auto const& triangle : node->triangles_)
+			{
+				trianglesOperations++;
+				auto d = geometry::getDistance(origin, triangle, dir);
+				distance = std::min(distance, d);
+			}
+			return distance;
+		}
+		
+		//std::cerr << "Triangles num in node " << node << "\n";
+		for (auto& child : node->children_)
+		{
+			distance = std::min(distance, getDistanceFromPoint(child, dir, origin));	
+		}
+	}
+	return distance;
+}
+
+float OctTree::getDistanceFromPoint2(OctNode* root, aiVector3D const& dir, aiVector3D const& origin, size_t& operationPerVertex) const
+{
+	
+	constexpr float maxFloat = std::numeric_limits<float>::max();
+	float distance = maxFloat;
+
+	std::priority_queue<QueueElement> nodesQueue;
+
+	auto distanceToRootNode = geometry::getDistanceToAABB(origin, dir, root->aabb_);
+
+	if (distanceToRootNode == maxFloat)
+	{
+		vertexToOctreeOperations++;
+		octreeToOctreeOperations++;
+		operationPerVertex++;
+		return distance;
+	}
+
+	nodesQueue.push((QueueElement(root, distanceToRootNode)));
+
+	//auto distanceToLeaf = maxFloat;
+
+	while (!nodesQueue.empty())
+	{
+		
+		TreeToTreeCount++;
+		auto node = nodesQueue.top().node_;
+		auto distanceFromNode = nodesQueue.top().distance_;
+		nodesQueue.pop();
+		operationPerVertex++;
+		if (node->isLeaf)
+		{
+			//if (distanceFromNode > distanceToLeaf)
+				//return distance;
+			
+			for (auto const& tri : node->triangles_)
+			{
+				vertexToOctreeOperations++;
+				octreeToOctreeOperations++;
+				trianglesOperations++;
+				distance = std::min(distance, geometry::getDistance(origin, tri, dir));
+				
+			}
+			return distance;
+			//distanceToLeaf = distanceFromNode;
+		}
+		
+		vertexToOctreeOperations++;
+		octreeToOctreeOperations++;
+		//std::cerr << "Triangles num in " << ((node->isLeaf) ? "leaf   " : "parrent") << " node " << node << " is  " << node->triangles_.size()  << "\n";
+		//logs << "Triangles num in " << ((node->isLeaf) ? "leaf   " : "parrent") << " node " << node << " is  " << node->triangles_.size() << "\n";
+
+		/*auto order = geometry::getAABBOrderIndices(node->aabb_, origin, dir);
+		for (auto index : order)
+		{
+			if (auto child = std::ranges::find_if(node->children_, [=](OctNode* node) { return node->aabbIndex == index; }); child != node->children_.end())
+			{
+				queue.push(c)
+			}
+		}*/
+
+
+		for (auto const& child : node->children_)
+		{
+			auto childDist = geometry::getDistanceToAABB(origin, dir, child->aabb_);
+
+			if (childDist != maxFloat)
+			{
+				nodesQueue.push(QueueElement(child, childDist));
+			}
+		}
+	}
+	return distance;
+	
+}
+
+float OctTree::getDistanceToOctree(OctTree const& to) const
+{
+	OctNode* toRoot = to.root;
+
+	auto toAABB = toRoot->aabb_;
+	auto fromAABB = root->aabb_;
+
+	auto toCenter = toAABB.mMin + (toAABB.mMax - toAABB.mMin) / 2.0f;
+	auto fromCenter = fromAABB.mMin + (fromAABB.mMax - fromAABB.mMin) / 2.0f;
+
+	auto direction = (toCenter - fromCenter).Normalize();
+
+	auto indicesOrderFrom = sortChildren(root, direction);
+
+	//auto indicesOrderTo = geometry::getAABBOrderIndices(toRoot->aabb_, fromCenter);
+
+	return TriToTriDistance(this->root, toRoot, direction);
+}
+
+float OctTree::TriToTriDistance(OctNode* fromRoot, OctNode* toRoot, aiVector3D const& direction) const
+{
+	auto parentAABB = fromRoot->aabb_;
+	auto octants = getOctants(parentAABB);
+	auto center = parentAABB.mMin + (parentAABB.mMax - parentAABB.mMin) / 2.0f;
+	Plane plane = { direction, center };
+
+	std::priority_queue<QueueElement> queue;
+
+	for (int index = 0; index < 8; index++) {
+
+		if (auto c = std::ranges::find_if(fromRoot->children_, [=](OctNode* node) { return node->aabbIndex == index; }); c != fromRoot->children_.end())
+		{
+			queue.push(QueueElement(*c, getAABBToPlaneDistance(octants[index], plane, direction)));
+		}
+
+	}
+	auto maxFloat = std::numeric_limits<float>::max();
+	auto minDistance = maxFloat;
+	auto prevNodeDistance = maxFloat;
+	auto prevMinDistance = maxFloat;
+
+	auto minNodeDistance = queue.top().distance_;
+	while (!queue.empty())
+	{
+		auto [node, node_distance] = queue.top();
+		queue.pop();
+		TreeToTreeCount++;
+		if (node->isLeaf)
+		{
+			
+			auto leafSize = fabs(getMaxAABBToPlaneDistance(node->aabb_, plane, direction) - node_distance);
+			
+			//if (getMaxAABBToPlaneDistance(node->aabb_, plane, direction) > minNodeDistance)
+			//	return minDistance;
+
+			auto minTriDistance = maxFloat;
+			Triangle minTri;
+			auto curentMinDistance = maxFloat;
+			for (auto const& triangle : node->triangles_)
+			{
+
+				size_t operationsPerVertex0 = 0;
+				auto distance0 = getDistanceFromPoint2(toRoot, direction, triangle.v0, operationsPerVertex0);
+				size_t operationsPerVertex1 = 0;
+				auto distance1 = getDistanceFromPoint2(toRoot, direction, triangle.v1, operationsPerVertex1);
+				size_t operationsPerVertex2 = 0;
+				auto distance2 = getDistanceFromPoint2(toRoot, direction, triangle.v2, operationsPerVertex2);
+				minDistance = std::min({minDistance ,distance0, distance1, distance2 });
+				curentMinDistance = std::min({ curentMinDistance ,distance0, distance1, distance2 });
+				if (minTriDistance > curentMinDistance)
+				{
+					minTri = triangle;
+					minTriDistance = curentMinDistance;
+				}
+					
+			}
+			std::cerr << node->aabb_ << " node min distance:  " << node_distance << " max node distance: " << getMaxAABBToPlaneDistance(node->aabb_, plane, direction) 
+				                                                                 << " min tri to tri distance: " << curentMinDistance << " plane to tri distance: " << getTriangleToPlaneDistance(minTri, plane, direction) << "\n";
+
+			distance_logs << node->aabb_ << " node min distance:  " << node_distance << " max node distance: " << getMaxAABBToPlaneDistance(node->aabb_, plane, direction)
+				<< " min tri to tri distance: " << curentMinDistance << " triangle: " << minTri << " plane to tri distance: " << getTriangleToPlaneDistance(minTri, plane, direction) << "\n";
+			if (minDistance < 16.3)
+				int i = 0;
+		        if(prevMinDistance)
+				prevMinDistance = minDistance;
+				minNodeDistance = getTriangleToPlaneDistance(minTri, plane, direction);
+			
+				
+		}
+
+		else 
+		{
+			auto octants = getOctants(node->aabb_);
+
+			for (int index = 0; index < 8; index++) {
+
+				if (auto c = std::ranges::find_if(node->children_, [=](OctNode* n) { return n->aabbIndex == index; }); c != node->children_.end())
+				{
+					auto distance = getAABBToPlaneDistance(octants[index], plane, direction);
+					
+					queue.push(QueueElement(*c, distance));
+				}
+
+			}
+		}
+		
+		
+	}
+	return minDistance;
+}
+
+float OctTree::getDistanceOctreeToOctree(OctNode* from, OctNode* to, std::vector<std::vector<int>> orderIndices, aiVector3D const& direction) const
+{
+	auto maxFloat = std::numeric_limits<float>::max();
+	auto minDistance = maxFloat;
+	
+
+	if (from->isLeaf)
+	{
+		for (auto const& triangle : from->triangles_)
+		{
+			size_t operationsPerVertex0 = 0;
+			auto distance0 = getDistanceFromPoint2(to, direction, triangle.v0, operationsPerVertex0);
+			size_t operationsPerVertex1 = 0;
+			auto distance1 = getDistanceFromPoint2(to, direction, triangle.v1, operationsPerVertex1);
+			size_t operationsPerVertex2 = 0;
+			auto distance2 = getDistanceFromPoint2(to, direction, triangle.v2, operationsPerVertex2);
+			minDistance = std::min({ minDistance, distance0, distance1, distance2 });
+			if (minDistance < 16.5)
+				int i = 0;
+		}
+		distanceOctreeToOctree = minDistance;
+		return minDistance;
+	}
+	octreeToOctreeOperations++;
+
+	bool watchFirstOrder = false;
+	for (auto const& orderVector : orderIndices)
+	{
+
+		for (auto const& index : orderVector)
+		{
+			if (auto child = std::ranges::find_if(from->children_, [=](OctNode* node) { return node->aabbIndex == index; }); child != from->children_.end())
+			{
+				   
+					minDistance = std::min(minDistance, getDistanceOctreeToOctree(*child, to, orderIndices, direction));
+					
+				
+			}
+
+		}
+		/*if (watchFirstOrder == true)
+		{
+			if (minDistance <= distanceOctreeToOctree)
+				return minDistance;
+			else
+				return distanceOctreeToOctree;
+		}
+		if (!watchFirstOrder)
+		{
+			watchFirstOrder = true;
+			distanceOctreeToOctree = minDistance;
+		}*/
+		
+	}
+	return minDistance;
+	
+	/*std::ranges::sort(fromChildren, [&direction](auto node1, auto node2) -> bool
+		{
+			auto [min1, max1] = getProjectionOnVector(node1->aabb_, direction);
+			auto [min2, max2] = getProjectionOnVector(node2->aabb_, direction);
+			return min1 > min2;
+		}
+
+	);
+	auto maxProj = getProjectionOnVector(fromChildren[0]->aabb_, direction).second;
+	for (auto const& child : fromChildren)
+	{
+		auto currentProjMax = getProjectionOnVector(child->aabb_, direction).second;
+		if ((currentProjMax - maxProj) > 0.01 && minDistance != maxFloat)
+			return minDistance;
+		minDistance = getDistanceOctreeToOctree(child, to, orderIndices, direction);
+	}
+	*/
+	
+	
+	/*std::priority_queue<QueueElement> NodesQueue;
+	NodesQueue.push(QueueElement(from, 0));
+
+	
+
+	auto leafOrder = std::numeric_limits<int>::max();
+
+	while (!NodesQueue.empty())
+	{
+		auto [node, nodeOrder] = NodesQueue.top();
+		NodesQueue.pop();
+
+		if (node->isLeaf)
+		{
+			if (nodeOrder > leafOrder && minDistance != maxFloat)
+			{
+				return minDistance;
+			}
+
+			for (auto const& triangle : node->triangles_)
+			{
+				auto distance0 = getDistanceFromPoint2(to, direction, triangle.v0);
+				auto distance1 = getDistanceFromPoint2(to, direction, triangle.v1);
+				auto distance2 = getDistanceFromPoint2(to, direction, triangle.v2);
+				minDistance = std::min({ minDistance, distance0, distance1, distance2 });
+			}
+			leafOrder = nodeOrder;
+		}
+
+		
+	}*/
+}
+
+/*
+float OctTree::getDistanceOctreeToOctree(OctNode* from, OctNode* to, aiVector3D const& direction) const
+{
+	size_t count = 0;
+	auto maxFloat = std::numeric_limits<float>::max();
+	
+	auto minDistance = maxFloat;
+
+	std::priority_queue<BoxToBoxDistanceQueueElement> nodesQueue;
+	auto [minFrom, maxFrom] = std::move(geometry::getProjectionOnVector(from->aabb_, direction));
+	auto [minTo, maxTo] = std::move(geometry::getProjectionOnVector(to->aabb_, direction));
+
+	nodesQueue.push(BoxToBoxDistanceQueueElement(from, to, minTo - maxFrom));
+	auto leafToLeafDistance = maxFloat;
+	while (!nodesQueue.empty())
+	{
+		auto [from, to, nodeToNodeDistance] = nodesQueue.top();
+		nodesQueue.pop();
+
+		if (from->isLeaf && to->isLeaf)
+		{
+			if (nodeToNodeDistance > leafToLeafDistance && minDistance != maxFloat)
+			{
+				return minDistance;
+			}
+
+			for (auto const& triangleFrom : from->triangles_)
+			{
+				for (auto const& triangleTo : to->triangles_)
+				{
+					TreeToTreeCount++;
+					auto distance0 = geometry::getDistance(triangleFrom.v0, triangleTo, direction);
+					auto distance1 = geometry::getDistance(triangleFrom.v1, triangleTo, direction);
+					auto distance2 = geometry::getDistance(triangleFrom.v2, triangleTo, direction);
+					minDistance = std::min({ minDistance, distance0, distance1, distance2 });
+				}
+			}
+			leafToLeafDistance = nodeToNodeDistance;
+		}
+		TreeToTreeCount++;
+		std::ranges::sort(from->children_, [&direction](auto node1, auto node2) -> bool
+			{
+				auto [min1, max1] = getProjectionOnVector(node1->aabb_, direction);
+				auto [min2, max2] = getProjectionOnVector(node2->aabb_, direction);
+				return min1 > min2;
+			}
+		
+		);
+		std::ranges::sort(to->children_, [&direction](auto node1, auto node2) -> bool
+			{
+				auto [min1, max1] = getProjectionOnVector(node1->aabb_, direction);
+				auto [min2, max2] = getProjectionOnVector(node2->aabb_, direction);
+				return min1 < min2;
+			}
+
+		);
+	
+		for (auto fromChild : from->isLeaf ? std::vector<OctNode*>{ from } : from->children_)
+		{
+			for (auto toChild : to->isLeaf ? std::vector<OctNode*>{ to } : to->children_)
+			{
+				//auto [minFromChild, maxFromChild] = std::move(geometry::getProjectionOnVector(fromChild->aabb_, direction));
+				//auto [minToChild, maxToChild] = std::move(geometry::getProjectionOnVector(toChild->aabb_, direction));
+				auto boxDistance = getAABBtoAABBDistance(fromChild->aabb_, toChild->aabb_, direction);
+				if(boxDistance != maxFloat)
+					nodesQueue.push(BoxToBoxDistanceQueueElement(fromChild, toChild, boxDistance));
+			}
+		}
+	}
+
+	//distance_logs << "Child calls for  " << from <<":  "<< count << "\n";
+	return minDistance;
+}*/
+
+
+

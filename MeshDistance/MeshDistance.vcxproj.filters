@@ -29,10 +29,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="TriangledMesh.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Geometry.hpp">
+    <ClInclude Include="TriangledMesh.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="OctTree.h">

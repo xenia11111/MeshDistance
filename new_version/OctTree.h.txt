@@ -1,0 +1,166 @@
+#include<iostream>
+#include <array>
+#include <ranges>
+#include <algorithm>
+#include <queue>
+#include "TriangledMesh.hpp"
+
+
+
+class OctTree {
+
+public:
+	OctTree(std::shared_ptr<TriangledMesh> const& mesh, size_t maxTrianglesPerNode, size_t maxDepth, float minBoxSize) : minNumberOfTriangles(maxTrianglesPerNode),
+																									    maxDepth(maxDepth),
+		                                                                                                minBoxSize_(minBoxSize)
+	{
+		mesh_ = mesh;
+		auto aabb = mesh_->getAABB();
+		root = new OctNode;
+		Build(root, mesh->getTriangles(), {} , aabb, 0);
+	}
+
+	
+	struct OctNode {
+
+		aiAABB aabb_;
+		int aabbIndex;
+		bool isLeaf = true;
+		std::vector<Triangle> triangles_;
+		//std::vector<uint32_t> indices_;
+		std::vector<OctNode*> children_;
+	};
+
+	struct QueueElement
+	{
+		OctNode* node_;
+		float distance_; // distance from the ray origin to the extents of the node
+		QueueElement(OctNode* node, float distance) : node_(node), distance_(distance) {}
+	};
+
+	struct QueueElementBox
+	{
+		int index_;
+		int intersectCount_; // distance from the ray origin to the extents of the node
+		QueueElementBox(int index, int intersectCount) : index_(index), intersectCount_(intersectCount) {}
+		friend bool operator < (const QueueElementBox& a, const QueueElementBox& b) { return a.intersectCount_ > b.intersectCount_; }
+	};
+
+
+	struct BoxToBoxDistanceQueueElement
+	{
+		OctNode* from;
+		OctNode* to;
+		float distance; 
+		BoxToBoxDistanceQueueElement(OctNode* first_, OctNode* second_, float dist) : from(first_), to(second_), distance(dist) {}
+		friend bool operator < (const BoxToBoxDistanceQueueElement& a, const BoxToBoxDistanceQueueElement& b) { return a.distance > b.distance; }
+	};
+
+	float getDistanceFromMesh( TriangledMesh const& otherMesh) const;
+	float getDistanceToOctree(OctTree const& other) const;
+	//float intersect(aiVector3D const& orig, aiVector3D const& dir) const;
+	
+    /*size_t getTrianglesCount() const
+	{
+		return getCount(root);
+	}
+
+	static size_t getCount(OctNode* node)
+	{
+		size_t sum = 0;
+		sum += node->triangles_.size();
+		for (auto const& child : node->children_)
+		{
+			sum += getCount(child);
+		}
+		return sum;
+	}*/
+	//float getDistance(OctTree const& to, aiVector3D const& rayDirection);
+	OctNode* root;
+	size_t mutable vertexToOctreeOperations = 0;
+	size_t mutable octreeToOctreeOperations = 0;
+	size_t mutable trianglesOperations = 0;
+	size_t mutable buildOperations = 0;
+	int mutable trianglesNotDistributed = 0;
+	int mutable trianglesExtra = 0;
+	size_t mutable sumAverageTriIntersect = 0;
+	size_t mutable sumAverageLogN = 0;
+	size_t mutable leafNodeCount = 0;
+	size_t mutable leafSumTri = 0;
+	size_t mutable parentNodeCount = 0;
+	size_t mutable TreeToTreeCount = 0;
+	std::array<size_t, 100> mutable  intersectCountPerDepth;
+	std::array<size_t, 100> mutable  insideCountPerDepth;
+private:
+	//float getDistance(OctNode* from, OctNode* to, aiVector3D const& direction);
+	float TriToTriDistance(OctNode* fromRoot, OctNode* toRoot, aiVector3D const& direction) const;
+	float getDistanceFromPoint(OctNode* octNode, aiVector3D const& direction, aiVector3D const& origin) const;
+	float getDistanceFromPoint2(OctNode* node, aiVector3D const& dir, aiVector3D const& origin, size_t& operationPerVertex) const;
+	//float getDistanceOctreeToOctree(OctNode* from, OctNode* to, aiVector3D const& direction) const;
+	float getDistanceOctreeToOctree(OctNode* from, OctNode* to, std::vector<std::vector<int>> orderIndices, aiVector3D const& direction) const;
+	//void Build(OctNode*& octNode, std::vector<uint32_t> const& indices, aiAABB const& aabb, int depth) const;
+	
+	void Build(OctNode*& node, std::vector<Triangle> const& trianglesInside, std::vector<Triangle> const& trianglesIntersect, aiAABB const& aabb, int depth) const;
+
+	//std::vector<Triangle> getFirstHalf(std::vector<Triangle> const& v) const;
+	//std::vector<Triangle> getSecondHalf(std::vector<Triangle> const& v) const;
+
+	//std::vector<Triangle> joinAndRemoveDuplicates(std::vector<Triangle> const& v1, std::vector<Triangle> const& v2, std::vector<Triangle> const& v3) const;
+
+	//void getChildrenTriangles(std::vector<Triangle> const& sortedByX, std::vector<Triangle> const& sortedByY, std::vector<Triangle> const& sortedByZ, std::array<std::vector<Triangle>, 8>& childNodeTriangles) const;
+
+
+	std::vector<std::vector<int>> sortChildren(OctNode* parent, aiVector3D const& dir) const;
+
+	std::array<int, 8> boxIntersectCount(aiAABB const& aabb, aiVector3D const& rayDir) const;
+
+	//std::vector<aiFace> faces_;
+	//std::vector<Triangle> triangles;
+
+	size_t maxDepth = 10;
+
+	size_t minNumberOfPoints = 1;
+
+	size_t minNumberOfTriangles = 1;
+
+	float mutable distanceOctreeToOctree = std::numeric_limits<float>::max();
+	size_t minNumberOfVertices = 100;
+
+	float minBoxSize_ = 0.1f;
+	size_t mutable triCount = 0;
+
+	struct Vector3DHash {
+		size_t operator()(const aiVector3D& v) const {
+			return std::hash<float>()(v.x) ^ std::hash<float>()(v.y) ^ std::hash<float>()(v.z);
+		}
+	};
+
+	std::shared_ptr<TriangledMesh> mesh_;
+
+	static std::array<aiAABB, 8> getOctants(aiAABB const& aabb)
+	{
+		aiVector3D BboxMin = aabb.mMin;
+		aiVector3D BboxMax = aabb.mMax;
+
+		aiVector3D center = BboxMin + (BboxMax - BboxMin) / 2.0f;
+
+		std::array<aiAABB, 8> octants
+		{
+			aiAABB{ BboxMin, center },
+			{ { center.x, BboxMin.y, BboxMin.z }, { BboxMax.x, center.y, center.z } },
+			{ { center.x, BboxMin.y, center.z }, { BboxMax.x, center.y, BboxMax.z } },
+			{ { BboxMin.x, BboxMin.y, center.z }, { center.x, center.y, BboxMax.z } },
+			{ { BboxMin.x, center.y, BboxMin.z }, { center.x, BboxMax.y, center.z } },
+			{ { center.x, center.y, BboxMin.z }, { BboxMax.x, BboxMax.y, center.z } },
+			{ center, BboxMax },
+			{ { BboxMin.x, center.y, center.z }, { center.x, BboxMax.y, BboxMax.z } }
+		};
+
+		return octants;
+	}
+};
+
+inline bool operator < (const OctTree::QueueElement& a, const OctTree::QueueElement& b) { return a.distance_ > b.distance_; }
+
+
+

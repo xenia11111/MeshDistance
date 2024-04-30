@@ -1,4 +1,4 @@
-#include <assimp/mesh.h>
+﻿#include <assimp/mesh.h>
 #include <assimp/vector3.h>
 #include <cstdint>
 #include <iostream>
@@ -17,43 +17,38 @@
 #include "assimp/postprocess.h"
 #include <cassert>
 #include <exception>
-#include <memory>
-#include "OctTree.h"   
+#include <memory>   
 #include <time.h> 
-
-
+#include <omp.h>
+#include <fstream>
+#include <filesystem>
+#include "TriangledMesh.h"
+#include "OctTree.h"
+namespace fs = std::filesystem;
 
 int main()
 { 
-   std::string resPath = "C:/Users/Frog/source/repos/MeshDistance/res/";
 
-   TriangledMesh first{ resPath + "02_SIDE_PLATE_LEFT.stl" };
-   TriangledMesh second{ resPath + "model2.stl" };
+   std::string resPath = fs::current_path().parent_path().string() + "\\res\\";
 
-   aiVector3D direction(1, 0, 0);
+  
+   aiVector3D direction = { 0.0, 0.0, 1.0 };
 
-   // std::cout << first.getDistance(second, direction) << "\n";
-   time_t start, end;
+   TriangledMesh first{ resPath + "cone1.stl" };
+   TriangledMesh second{ resPath + "Sphere1.stl" };
 
-   std::cout << "Octree building start..." << "\n";
-   time(&start);
+   auto mesh_ptr = std::make_shared<TriangledMesh>(second);
 
-   OctTree tree{ first.getAABB(), first.getTriangles(), 1, 10 };
+   std::cout << "Start build octree..\n";
 
-   time(&end);
-   std::cout << "Octree was built in..." << difftime(end, start) << "sec" << "\n";
+   OctTree tree(mesh_ptr, 10, std::numeric_limits<size_t>::max(), 0.1f);
 
-   std::cout << "Start searching distance..." << "\n";
-   time(&start);
+   std::cout << "End build octree\n";
 
-   std::cout << tree.getDistanceFromMesh(direction, second) << "\n";
+   std::cout << "Build operations: " << tree.buildOperations << "\n";
 
-   time(&end);
-   std::cout << "Got the distance in..." << difftime(end, start) << "sec" << "\n";
+   std::cout << "Naive method distance: " << first.getDistance(second, direction) << " operations count: " << first.operations << "\n";
+ 
+   std::cout << "Vertex-Octree method distance: " << tree.getDistanceFromMesh(first, direction) << "\n";
 
-
-   return EXIT_SUCCESS;
 }
-
-
-
